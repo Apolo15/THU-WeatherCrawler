@@ -6,12 +6,14 @@ import re
 import time
 import pandas as pd
 import pymysql
-from Entity import Entity_weather
-from DataBaseDao import DataBaseDao
+from Entity.Entity_weather import Entity_weather
+from DataBaseDao.DataBaseDao import DataBaseDao
+from queue import Queue
+from threading import Thread
 
-def crawler(url, province, city, district,Dao):
+def crawler(url, province, city, district, Dao):
     try:
-
+        print(url)
         header = {
             'user-agent': 'Mozilla / 5.0(WindowsNT10.0;Win64;x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 91.0.4472.77 Safari / 537.36'
         }
@@ -19,12 +21,14 @@ def crawler(url, province, city, district,Dao):
         i = 0
         while (i < 3):
             try:
-                r = requests.get(url, headers=header, timeout=100, verify=True, allow_redirects=True)
+                r = requests.get(url, headers=header, timeout=500, verify=True, allow_redirects=True)
                 break
             except requests.exceptions.RequestException as e:
                 print(e)
                 i += 1
         r.encoding = chardet.detect(r.content)['encoding']
+
+
         soup = BeautifulSoup(r.text, 'lxml')
 
         ## 获取sunrise和sunset
@@ -37,14 +41,22 @@ def crawler(url, province, city, district,Dao):
         m = re.search('var hours = (.+)[,;]{1}', script)
         if m:
             found = m.group(1)
-        json =js.loads(found)
+            json =js.loads(found)
         # print(type(found))
+        else:
+            print("此条script为空，作废，下一条")
+            return
+        '''
+        @Author:zhangxu
+        @Desc  :41行代码我往后挪了挪，避免未申明就引用的情况并加入判空
+        '''
 
-        # 取中午十二点 
+
+
+        # 取中午十二点
         data = json[12] # type:'dict'
         b = data["time"] if "time" in data else None
         date = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(b)) #time
-
         apparentTemperature = data["apparentTemperature"] if "apparentTemperature" in data else None #apparentTemperature
         pressure = data["pressure"] if "pressure" in data else None#pressure
         cloudCover = data["cloudCover"] if "cloudCover" in data else None#cloudCover
@@ -53,7 +65,15 @@ def crawler(url, province, city, district,Dao):
         precipProbability = data["precipProbability"] if "precipProbability" in data else None#preciRate
         ozone = data["ozone"] if "ozone" in data else None#ozone
         precipType = data["precipType"] if "precipType" in data else None#preciType
-        precipAccumulation = data["precipAccumulation"] if "precipAccumulation" in data else None#snowFall
+
+        precipAccumulation = soup.select("div.precipAccum > span.val.swap > span.num.swip")
+        if precipAccumulation != []:
+            precipAccumulation = precipAccumulation[0].text.strip()
+            if precipAccumulation == "???":
+                precipAccumulation = None
+        else:
+            precipAccumulation = data["precipAccumulation"] if "precipAccumulation" in data else None#snowFall
+
         temperature = data["temperature"] if "temperature" in data else None#temperature
         textSummary = data["summary"] if "summary" in data else None#textSummary
         UVIndex = data["uvIndex"] if "uvIndex" in data else None#UVIndex
@@ -71,29 +91,69 @@ def crawler(url, province, city, district,Dao):
         # print(date,data["temperature"])
         # js_test=js.loads(bs.find("script",{"id":"DATA_INFO"}).get_text())
 
-        entityWeather= Entity_weather(sunRise, sunSet, date, apparentTemperature, pressure, cloudCover, dewPoint, humidity, precipProbability, ozone, precipType, precipAccumulation, temperature, textSummary, UVIndex, windGust, windSpeed, windBearing)
-        Dao.insert_tableName(entityWeather)
+        entityWeather= Entity_weather(province, city, district, sunRise, sunSet, date, apparentTemperature, pressure, cloudCover, dewPoint, humidity, precipProbability, ozone, precipType, precipAccumulation, temperature, textSummary, UVIndex, windGust, windSpeed, windBearing)
+        Dao.insert_weather(entityWeather)
 
-
-    except:
+    except Exception as e:
         print(e)
+        print(e.__traceback__.tb_frame.f_globals["__file__"])  # 发生异常所在的文件
+        print(e.__traceback__.tb_lineno)  # 发生异常所在的行数
         return
+
+class Spider():
+    def __init__(self):
+        self.qurl = Queue()
+        self.thread_num = 1
+        self.Dao=DataBaseDao()
+
+    def produce_queue(self):
+        '''
+        @Author:zhangxu
+        @Date  ：${DATE}${TIME}
+        @Desc  :把excel里面所有数据存到一个队列里；     供多线程拿取
+        '''
+        df = pd.read_excel("gpsInfo.xlsx", sheet_name='gpsinfo')
+        # print(df)
+        for i in range(0, df.shape[0]):
+            data = df.iloc[i].to_list()
+            self.qurl.put(data)
+
+    def get_info(self):
+        while not self.qurl.empty(): # 保证url遍历结束后能退出线程
+            data = self.qurl.get() # 从队列中获取URL
+            '''测试长度'''
+            print(self.qurl.qsize())
+            print('目前爬取的城市区县的元组为', data)
+
+
+
+            id, province, city, district, lat, long = data
+            t = time.mktime(time.strptime("2010-01-01", '%Y-%m-%d'))
+            t_end = time.mktime(time.strptime("2021-10-01", '%Y-%m-%d'))
+            while t < t_end:
+                date = time.strftime("%Y-%m-%d", time.localtime(t))
+                url = "https://darksky.net/details/" + str(lat) + "," + str(long) + "/" + date + "/si12/en"
+                crawler(url, province, city, district, self.Dao)
+                t += 24 * 60 * 60  # 一天
+                time.sleep(2)
+
+    def run(self):
+        self.produce_queue()
+
+        ths = []
+        for _ in range(self.thread_num):
+            th = Thread(target=self.get_info)
+            th.start()
+            ths.append(th)
+
+        print('All Data crawling is finished.')
+
+
 
 
 
 if __name__ == "__main__":
-    Dao=DataBaseDao()
-    df=pd.read_excel("gpsInfo.xlsx",sheet_name='gpsinfo')
-    # print(df)
-    for i in range(df.shape[0]):
-        data = df.iloc[i].to_list()
-        id, province, city, district, lat, long = data
-        t = time.mktime(time.strptime("2010-01-01", '%Y-%m-%d'))
-        t_end = time.mktime(time.strptime("2021-10-01", '%Y-%m-%d'))
-        while t < t_end:
-            date = time.strftime("%Y-%m-%d", time.localtime(t))
-            url = "https://darksky.net/details/"+str(lat)+","+str(long)+"/"+date+"/si12/en"
-            crawler(url,province, city, district, Dao)
-            t += 24*60*60 #一天
-            time.sleep(10)
+
+    Spider().run()
+        
 

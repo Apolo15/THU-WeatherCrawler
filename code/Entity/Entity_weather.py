@@ -1,7 +1,10 @@
 class Entity_weather:
-    def __init__(self, sunRise, sunSet, date, apparentTemperature, pressure, cloudCover, dewPoint, humidity,
+    def __init__(self, province, city, district, sunRise, sunSet, date, apparentTemperature, pressure, cloudCover, dewPoint, humidity,
                  precipProbability, ozone, precipType, precipAccumulation, temperature, summary, uvIndex, windGust,
                  windSpeed, windBearing):
+        self.province = province
+        self.city = city
+        self.district = district
         self.sunRise = sunRise
         self.sunSet = sunSet
         self.date = date
@@ -22,7 +25,10 @@ class Entity_weather:
         self.windBearing = windBearing
 
     def print(self):
-        print(self.sunRise,
+        print(self.province,
+              self.city,
+              self.district,
+              self.sunRise,
               self.sunSet,
               self.date,
               self.apparentTemperature,
