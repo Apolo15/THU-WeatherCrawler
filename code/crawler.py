@@ -11,6 +11,9 @@ from DataBaseDao.DataBaseDao import DataBaseDao
 from queue import Queue
 from threading import Thread
 
+
+
+
 def crawler(url, province, city, district, Dao):
     try:
         print(url)
@@ -29,7 +32,7 @@ def crawler(url, province, city, district, Dao):
         r.encoding = chardet.detect(r.content)['encoding']
 
 
-        soup = BeautifulSoup(r.text, 'lxml')
+        soup = BeautifulSoup(r.text, 'html5lib')
 
         ## 获取sunrise和sunset
         sunTime = soup.find("div", class_="sunTimes")
@@ -92,7 +95,9 @@ def crawler(url, province, city, district, Dao):
         # js_test=js.loads(bs.find("script",{"id":"DATA_INFO"}).get_text())
 
         entityWeather= Entity_weather(province, city, district, sunRise, sunSet, date, apparentTemperature, pressure, cloudCover, dewPoint, humidity, precipProbability, ozone, precipType, precipAccumulation, temperature, textSummary, UVIndex, windGust, windSpeed, windBearing)
-        Dao.insert_weather(entityWeather)
+        # Dao.insert_weather(entityWeather)
+        Dao.put_queueof_entity(entityWeather)
+
 
     except Exception as e:
         print(e)
@@ -103,8 +108,10 @@ def crawler(url, province, city, district, Dao):
 class Spider():
     def __init__(self):
         self.qurl = Queue()
-        self.thread_num = 1
+
+        self.thread_num = 10
         self.Dao=DataBaseDao()
+
 
     def produce_queue(self):
         '''
@@ -118,13 +125,12 @@ class Spider():
             data = df.iloc[i].to_list()
             self.qurl.put(data)
 
+
     def get_info(self):
         while not self.qurl.empty(): # 保证url遍历结束后能退出线程
             data = self.qurl.get() # 从队列中获取URL
-            '''测试长度'''
-            print(self.qurl.qsize())
-            print('目前爬取的城市区县的元组为', data)
 
+            print('目前爬取的城市区县的元组为', data)
 
 
             id, province, city, district, lat, long = data
@@ -133,6 +139,7 @@ class Spider():
             while t < t_end:
                 date = time.strftime("%Y-%m-%d", time.localtime(t))
                 url = "https://darksky.net/details/" + str(lat) + "," + str(long) + "/" + date + "/si12/en"
+
                 crawler(url, province, city, district, self.Dao)
                 t += 24 * 60 * 60  # 一天
                 time.sleep(2)
@@ -145,8 +152,13 @@ class Spider():
             th = Thread(target=self.get_info)
             th.start()
             ths.append(th)
+        print('【爬虫线程】：所有都启动完毕')
 
-        print('All Data crawling is finished.')
+        th_insert=Thread(target=self.Dao.get_queueof_entity())
+        th_insert.start()
+        print('【搬运工线程】：启动完毕')
+
+
 
 
 

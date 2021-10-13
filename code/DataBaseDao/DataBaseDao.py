@@ -1,5 +1,6 @@
 import pymysql.cursors
-
+from queue import Queue
+import time
 
 class DataBaseDao():
 
@@ -12,6 +13,8 @@ class DataBaseDao():
             db='weatherdata',
             charset='utf8mb4',
         )
+
+        self.qentity = Queue()
         '''
         1、插入表的名字我不知道，你按照你的表名更改一下这个函数名字吧
         '''
@@ -56,3 +59,35 @@ class DataBaseDao():
 
         # 创建的connection是非自动提交，需要手动commit
         self.connection.commit()
+
+    def put_queueof_entity(self, entityWeather):
+        '''
+        @Author:zhangxu
+        @Date  ：${DATE}${TIME}
+        @Desc  :把所有爬取到的数据，存到一个队列里，由某一个单独的线程单独插入
+        '''
+        self.qentity.put(entityWeather)
+
+    def get_queueof_entity(self):
+        count=0
+        '''连续三次队列里都没数据的话就判断不会继续爬取到数据，整个爬虫停滞'''
+        while(count<3):
+            while not self.qentity.empty():  # 保证url遍历结束后能退出线程
+                count=0
+                entityWeather = self.qentity.get()
+                self.insert_weather(entityWeather)
+                # entityWeather.print()
+
+            time.sleep(10)
+            count=count+1
+            print("开始沉睡")
+
+        print("【搬运工线程】：沉睡3次，没有新数据插入，插入结束")
+
+
+
+
+
+
+
+        #如果爬取数据插入队列的速度，没有插入数据库的速度快（即队列有时候是空的情况下），这种情况交给线程去判断，延续10秒
