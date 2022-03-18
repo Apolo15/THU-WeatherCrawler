@@ -13,10 +13,20 @@ import time
 class DataBaseDao():
     def __init__(self):
         # 初始化connection
+        '''option1：下面这个是远程服务器10.1.0.13的连接'''
+        # self.connection = pymysql.connect(
+        #     host='10.1.0.13',
+        #     user='root',
+        #     password='root',
+        #     db='thu-weatherdata',
+        #     charset='utf8',
+        # )
+
+        '''option2：下面这个是本地电脑10.1.0.22的连接'''
         self.connection = pymysql.connect(
-            host='10.1.0.13',
+            host='localhost',
             user='root',
-            password='root',
+            password='',
             db='thu-weatherdata',
             charset='utf8',
         )
@@ -78,7 +88,7 @@ class DataBaseDao():
 
     def get_allcctvnews(self):
         cursor = self.connection.cursor()
-        sql = "select * from cctv_news where id >200858"
+        sql = "select * from cctv_news where id >433"
         cursor.execute(sql)
         return cursor.fetchall()
 

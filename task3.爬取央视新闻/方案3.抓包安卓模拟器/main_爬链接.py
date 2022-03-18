@@ -42,8 +42,8 @@ def crawler():
 
 
     page = 0
-    # time_stamp = 1577875564000    #2020-01-01
-    time_stamp=1514797567000
+    time_stamp = 1577875564000    #2020-01-01
+    # time_stamp=1514797567000
     count = 0      # 用来计算天数，如果超过31天就是2月份了，我没有去分析跨月份的规律是不是也是这样
     while True:
         try:
